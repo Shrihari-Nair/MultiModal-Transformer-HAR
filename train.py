@@ -15,7 +15,6 @@ if not os.path.exists('exps/'+exp+'/'):
     os.makedirs('exps/'+exp+'/')
 PATH='exps/'+exp+'/'
 
-#CUDA for PyTorch
 print("Using CUDA....")
 
 use_cuda = torch.cuda.is_available()
@@ -28,3 +27,5 @@ params = {'batch_size':8,
           'shuffle': True,
           'num_workers': 3}
 max_epochs = 250
+
+pose2id, labels, partition = PreProcessing_ncrc.preprocess()
