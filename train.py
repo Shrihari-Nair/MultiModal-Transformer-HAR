@@ -1,7 +1,7 @@
 import torch
 from create_dataset import Poses3d_Dataset
 import preprocessor
-from models.cross_view_fusion import ActRecogTransformer
+from models.cross_view_fusion import Action_Recognition_Transformer
 from plotter.visualizer import get_plot
 from asam import ASAM
 from timm.loss import LabelSmoothingCrossEntropy
@@ -44,7 +44,7 @@ validation_set = Poses3d_Dataset(data='ncrc',list_IDs=partition['test'], labels=
 validation_generator = torch.utils.data.DataLoader(validation_set, **params) #Each produced sample is 6000 x 229 x 3
 
 print("Initiating Model...")
-model = ActRecogTransformer(device)
+model = Action_Recognition_Transformer(device)
 model = model.to(device)
 
 # Define Loss Function and Optimizer
