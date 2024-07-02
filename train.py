@@ -39,5 +39,12 @@ acc_frames = 150
 
 training_set = Poses3d_Dataset( data='ncrc',list_IDs=partition['train'], labels=labels, 
                                pose2id=pose2id, mocap_frames=mocap_frames, acc_frames=acc_frames, normalize=False)
-training_generator = torch.utils.data.DataLoader(training_set, **params) #Each produced sample is  200 x 59 x 3
+training_generator = torch.utils.data.DataLoader(training_set, **params) #Each produced sample is  200 x 59 x 3 
 
+validation_set = Poses3d_Dataset(data='ncrc',list_IDs=partition['test'], labels=labels, pose2id=pose2id, 
+                                 mocap_frames=mocap_frames, acc_frames=acc_frames ,normalize=False)
+validation_generator = torch.utils.data.DataLoader(validation_set, **params) #Each produced sample is 6000 x 229 x 3
+
+print("Initiating Model...")
+model = ActRecogTransformer(device)
+model = model.to(device)
