@@ -84,7 +84,8 @@ for epoch in range(max_epochs):
     accuracy = 0.
     cnt = 0.
     for inputs, targets in training_generator:
-        inputs = inputs.to(device); #print("Input batch: ",inputs)
+        inputs = inputs.to(device) 
+        #print("Input batch: ",inputs)
         targets = targets.to(device)
 
         optimizer.zero_grad()
@@ -123,7 +124,8 @@ for epoch in range(max_epochs):
         for inputs, targets in validation_generator:
 
             b = inputs.shape[0]
-            inputs = inputs.to(device); #print("Validation input: ",inputs)
+            inputs = inputs.to(device)
+            #print("Validation input: ",inputs)
             targets = targets.to(device)
             
             predictions = model(inputs.float())
