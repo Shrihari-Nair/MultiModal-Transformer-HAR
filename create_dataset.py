@@ -37,7 +37,8 @@ class Poses3d_Dataset(torch.utils.data.Dataset):
             self.meditag_segment_id = None
             self.mocap = np.array([])
             self.mocap_segment_id = None
-            self.mocap_frames = kwargs.get('mocap_frames', None); self.acc_frames = kwargs.get('acc_frames',None);
+            self.mocap_frames = kwargs.get('mocap_frames', None)
+            self.acc_frames = kwargs.get('acc_frames',None)
 
         
     #Function to compute magnitude of a signal
@@ -49,129 +50,202 @@ class Poses3d_Dataset(torch.utils.data.Dataset):
         return np.sqrt(data[:,0]+data[:,1]+data[:,2]).reshape(data.shape[0],1)
 
     #Function to select frames
-    def frame_selection(self,data_sample,num_frames,skip=2):
+    def frame_selection(self, data_sample, num_frames, skip=2):
+        """
+        This function selects frames from the given data_sample based on the specified number of frames.
+        The function first checks if the number of frames in the data_sample is greater than the desired number of frames.
+        If it is, it selects every second frame using the skip parameter.
+        If the number of frames in the selected data_sample is still greater than the desired number of frames,
+        it selects a random subset of frames until the desired number of frames is reached.
+        If the number of frames in the data_sample is less than the desired number of frames,
+        it adds additional frames by repeating the existing frames or by repeating the last frame until the desired number of frames is reached.
         
-        if (data_sample.shape[0])>num_frames: 
-            data_sample=np.array(data_sample[::skip,:,:])#select every second frame
-            if data_sample.shape[0]>num_frames: #If after every second frame, the count is higher
-                data_sample=data_sample[:num_frames,:,:]
+        Args:
+            data_sample (numpy array): The array containing the data samples.
+            num_frames (int): The desired number of frames.
+            skip (int, optional): The number of frames to skip between each selected frame. Defaults to 2.
         
-        if data_sample.shape[0]<num_frames:
-            diff=num_frames-data_sample.shape[0]
-	
-            #Select diff random frames
-            if diff<=data_sample.shape[0]: #If diff<data_sample, do this!
-                if diff<data_sample.shape[0]:
-                    sampled_frames=random.sample(range(0,data_sample.shape[0]-1), diff)
-                elif diff==data_sample.shape[0]:
-                    sampled_frames=np.arange(data_sample.shape[0]) #If data_sample len is half of self.frame_num, just copy every frame
-                #Copy sampled frames after the original frame
+        Returns:
+            numpy array: The selected frames with the desired number of frames.
+        """
+        
+        # Check if the number of frames in the data_sample is greater than the desired number of frames
+        if (data_sample.shape[0]) > num_frames:
+            # Select every second frame using the skip parameter
+            data_sample = np.array(data_sample[::skip, :, :])
+            
+            # If the number of frames in the selected data_sample is still greater than the desired number of frames,
+            # select a random subset of frames until the desired number of frames is reached
+            if data_sample.shape[0] > num_frames:
+                # Calculate the number of frames to select randomly
+                diff = num_frames - data_sample.shape[0]
                 
-                for f in sampled_frames:
-                    data_sample=np.insert(data_sample,f,data_sample[f,:,:],axis=0)
+                # Select diff random frames
+                if diff <= data_sample.shape[0]:  # If diff is less than or equal to the number of frames in data_sample
+                    if diff < data_sample.shape[0]:
+                        # Select random indices from 0 to data_sample.shape[0]-1 except the last index
+                        sampled_frames = random.sample(range(0, data_sample.shape[0] - 1), diff)
+                    elif diff == data_sample.shape[0]:
+                        # If diff is equal to the number of frames in data_sample, select all indices
+                        sampled_frames = np.arange(data_sample.shape[0])
+                    
+                    # Insert the selected frames at their respective indices in the data_sample array
+                    for f in sampled_frames:
+                        data_sample = np.insert(data_sample, f, data_sample[f, :, :], axis=0)
+                
+                # If diff is greater than the number of frames in data_sample, repeat every frame twice
+                elif diff > data_sample.shape[0]:
+                    # Select all indices
+                    sampled_frames = np.arange(data_sample.shape[0])
+                    
+                    # Insert the selected frames at their respective indices in the data_sample array
+                    for f in sampled_frames:
+                        data_sample = np.insert(data_sample, f, data_sample[f, :, :], axis=0)
+                    
+                    # Calculate the remaining number of frames to be added
+                    rem_diff = num_frames - data_sample.shape[0]
+                    
+                    # Repeat the last frame pose for rem_diff times
+                    last_frame = data_sample[-1, :, :]
+                    tiled = np.tile(last_frame, (rem_diff, 1, 1))
+                    data_sample = np.append(data_sample, tiled, axis=0)
+        
+        # If the number of frames in the data_sample is less than the desired number of frames,
+        # add additional frames by repeating the existing frames or by repeating the last frame until the desired number of frames is reached
+        if data_sample.shape[0] < num_frames:
+            # Calculate the difference between the desired number of frames and the number of frames in the data_sample
+            diff = num_frames - data_sample.shape[0]
             
-            elif diff>data_sample.shape[0]: #else if diff>data_sample len
-               #Copy every frame twice and then repeat last frame to complete desired len
-                sampled_frames=np.arange(data_sample.shape[0])
+            # Select every frame twice and repeat the last frame to complete the desired number of frames
+            sampled_frames = np.arange(data_sample.shape[0])
             
-                #Copy sampled frames after the original frame
-                for f in sampled_frames:
-                    data_sample=np.insert(data_sample,f,data_sample[f,:,:],axis=0)
+            # Insert the selected frames at their respective indices in the data_sample array
+            for f in sampled_frames:
+                data_sample = np.insert(data_sample, f, data_sample[f, :, :], axis=0)
             
-                #If still less then desired num frames, repeat last frame
-                rem_diff=num_frames-data_sample.shape[0]
-                last_frame=data_sample[-1,:,:]
-                tiled=np.tile(last_frame,(rem_diff,1,1))
-                data_sample=np.append(data_sample,tiled,axis=0) #repeat last frame pose for diff times
-
+            # If still less than the desired number of frames, repeat the last frame pose until the desired number of frames is reached
+            if data_sample.shape[0] < num_frames:
+                rem_diff = num_frames - data_sample.shape[0]
+                last_frame = data_sample[-1, :, :]
+                tiled = np.tile(last_frame, (rem_diff, 1, 1))
+                data_sample = np.append(data_sample, tiled, axis=0)
+        
         return data_sample
 
 
     #Read segment - Function to read actiona nd convert it to fx29x3
     #Input: segment csv file path, window id
     #Output: Array: fx29x3
-    def read_mocap_segment(self,path):
-        df=pd.read_csv(path)
-        
-        df.drop('time_elapsed',axis=1,inplace=True)
-        df.drop('segment_id',axis=1,inplace=True)
-        
-        df.interpolate(method='linear',axis=0,inplace=True)
-        df.fillna(method='bfill',axis=0,inplace=True)
-        df.fillna(method='ffill',axis=0,inplace=True)
-        df.fillna(value=0,axis=0,inplace=True)
-        #print("Nans : ",df.isna().sum().sum())
-        #assert df.isna().sum().sum() == 0
-        
-        data=df.to_numpy()
-        frames=data.shape[0]
-        data=np.reshape(data,(frames,29,3))
+    def read_mocap_segment(self, path):
+        """
+        Reads a segment csv file containing mocap data and converts it to an array with shape (frames, 29, 3).
+        The csv file is expected to have the following columns:
+        - 'time_elapsed': time elapsed in seconds
+        - 'segment_id': id of the segment
+        - 'x1', 'y1', 'z1', ..., 'x29', 'y29', 'z29': coordinates of 29 body joints
+        The function performs the following steps:
+        1. Reads the csv file into a pandas DataFrame.
+        2. Drops the 'time_elapsed' and 'segment_id' columns from the DataFrame.
+        3. Interpolates missing values in the DataFrame using linear interpolation.
+        4. Fills missing values at the beginning and end of each row using the last observed value.
+        5. Reshapes the DataFrame into an array with shape (frames, 29, 3), where each row represents the coordinates of a body joint at a specific frame.
+        6. Optionally, selects frames from the array using the `frame_selection` method.
+        7. Optionally, normalizes the array using the `normalize_data` method.
+        8. Returns the array with shape (frames, 29, 3).
+        """
+        # Read the csv file into a pandas DataFrame
+        df = pd.read_csv(path)
 
-        '''
-        #Fix the whole segment count - Repeat last pose!
-        if (data.shape[0]<MOCAP_SEGMENT):
-            last_pose = data[-1,:,:]
-            diff = MOCAP_SEGMENT - data.shape[0]
-            tiled = np.tile(last_pose,(diff,1,1))
-            data = np.append(data,tiled,axis=0)
-        elif data.shape[0]>MOCAP_SEGMENT:
-            data=data[:MOCAP_SEGMENT]
-        '''
-        data = self.frame_selection(data,self.mocap_frames,skip=10)
+        # Drop the 'time_elapsed' and 'segment_id' columns from the DataFrame
+        df.drop('time_elapsed', axis=1, inplace=True)
+        df.drop('segment_id', axis=1, inplace=True)
 
+        # Interpolate missing values in the DataFrame using linear interpolation
+        df.interpolate(method='linear', axis=0, inplace=True)
+
+        # Fill missing values at the beginning and end of each row using the last observed value
+        df.fillna(method='bfill', axis=0, inplace=True)
+        df.fillna(method='ffill', axis=0, inplace=True)
+        df.fillna(value=0, axis=0, inplace=True)
+
+        # Reshape the DataFrame into an array with shape (frames, 29, 3)
+        data = df.to_numpy()
+        frames = data.shape[0]
+        data = np.reshape(data, (frames, 29, 3))
+
+        # Optionally, select frames from the array using the `frame_selection` method
+        data = self.frame_selection(data, self.mocap_frames, skip=10)
+
+        # Optionally, normalize the array using the `normalize_data` method
         if self.normalize:
-            data = self.normalize_data(data,np.mean(data),np.std(data))
+            data = self.normalize_data(data, np.mean(data), np.std(data))
 
-        return data #600 x 29 x 3
+        # Return the array with shape (frames, 29, 3)
+        return data  # 600 x 29 x 3
 
 
     #Read segment - Function to read acceleration data and convert it to 120 x 3 [x,y,z]
     #Input: segment csv file path, window id
     #Output: Array: 20x3
     def read_acc_segment(self,path,segment_id):
+        # Read the csv file into a pandas DataFrame
         df = pd.read_csv(path)
 
+        # Drop the 'time_elapsed' column from the DataFrame
         df.drop('time_elapsed',axis=1,inplace=True)
-        
+
+        # Interpolate missing values in the DataFrame using linear interpolation
         df.interpolate(method='linear',axis=0,inplace=True)
-        df.fillna(method='bfill',axis=0,inplace=True); win = 40
-        #df['x'] = df['x'].ewm(span=win).mean(); df['y'] = df['y'].ewm(span=win).mean()
-        #df['z'] = df['z'].ewm(span=win).mean()
-        
-        df_segment = df.loc[df['segment_id']==segment_id,:].copy() #Extract meditag data of respective sensor, 600 x 4
-	
-        df_segment.drop('segment_id',axis=1,inplace=True) #120 x 3
+
+        # Fill missing values at the beginning and end of each row using the last observed value
+        df.fillna(method='bfill',axis=0,inplace=True)
+
+        # Extract the rows corresponding to the specified segment_id
+        df_segment = df.loc[df['segment_id']==segment_id,:].copy()
+
+        # Drop the 'segment_id' column from the DataFrame
+        df_segment.drop('segment_id',axis=1,inplace=True)
+
+        # Convert the DataFrame to a numpy array
         data=df_segment.to_numpy()
-        
-        #Adjust if last window has less samples
+
+        # If the extracted data has zero rows, it means the segment is missing
         if data.shape[0]==0:
-            #print("INVALID SEGMENT: ",segment_id,'---',path)
-            segment219 =  df.loc[df['segment_id'] == 219,:] #Extract segment 219, which is same act performed by same subject as missing one!
+            # Extract segments 219 and 685, which are similar segments performed by the same subject
+            segment219 =  df.loc[df['segment_id'] == 219,:]
             segment219.drop('segment_id',axis=1,inplace=True)
             data219 = segment219.to_numpy()
 
-            segment685 =  df.loc[df['segment_id'] == 685,:] #Another similar segment
+            segment685 =  df.loc[df['segment_id'] == 685,:]
             segment685.drop('segment_id',axis=1,inplace=True)
             data685 = segment685.to_numpy()
-            
-            min_samples = data685.shape[0] if data685.shape[0]<data219.shape[0] else data219.shape[0]
-            data219 = data219[:min_samples]
-            data685 = data685[:min_samples]
 
+            # Calculate the minimum number of samples between the two segments
+            min_samples = min(data685.shape[0], data219.shape[0])
+
+            # Take the first min_samples samples from both segments
+            data219 = data219[:min_samples,:]
+            data685 = data685[:min_samples,:]
+
+            # Calculate the mean of the two segments
             data = np.mean([data219,data685], axis=0)
 
+        # If the extracted data has fewer samples than the desired number of frames, pad it with the last observed value
         if (data.shape[0]<self.acc_frames):
             last_loc = data[-1,:]
             diff = self.acc_frames - data.shape[0]
             tiled = np.tile(last_loc,(diff,1))
             data = np.append(data,tiled,axis=0)
+        # If the extracted data has more samples than the desired number of frames, take only the first self.acc_frames samples
         elif data.shape[0]>self.acc_frames:
             data=data[:self.acc_frames,:]
-        
+
+        # If normalization is enabled, normalize the data
         if self.normalize:
             data = self.normalize_data(data,np.mean(data),np.std(data))
-        
-        return data #120 x 3
+
+        # Return the numpy array with shape (self.acc_frames, 3) representing the acceleration data for the specified segment
+        return data #self.acc_frames x 3
 
     def extract_acc_features(self,data):
         #[mean(xyz), std(xyz), Max(xyz), Min(xyz), Kurtosis(xyz), Skewness(xyz)]
@@ -193,9 +267,9 @@ class Poses3d_Dataset(torch.utils.data.Dataset):
         acc_features[8,0] = np.max(data[:,2])
 
         #Min
-        acc_features[9,0] = np.max(data[:,0])
-        acc_features[10,0] = np.max(data[:,1])
-        acc_features[11,0] = np.max(data[:,2])
+        acc_features[9,0] = np.min(data[:,0])
+        acc_features[10,0] = np.min(data[:,1])
+        acc_features[11,0] = np.min(data[:,2])
 
         #Kurtosis
         acc_features[12,0] = s.kurtosis(data[:,0], fisher=False)
@@ -215,43 +289,65 @@ class Poses3d_Dataset(torch.utils.data.Dataset):
   
     #Function to get poses for F frames/ one sample, given sample id 
     def get_pose_data(self,id):
+        """
+        This function retrieves the pose data for a given sample id.
         
+        Parameters:
+        - id (int): The sample id for which the pose data is to be retrieved.
+        
+        Returns:
+        - data_sample (torch.Tensor): A tensor containing the pose data for the given sample id.
+        """
+        
+        # Check if the data is 'ncrc'
         if self.data =='ncrc':
-         
-            segment_info = self.pose2id[id] #get info about paths to action sample
             
-            mocap_info = segment_info['mocap'] #get path to one windowed sample mocap - [path,int id]
-            acc_info = segment_info['acc'] #get path to one windowed sample meditag - [path, int id]
+            # Get the information about the paths to the action sample
+            segment_info = self.pose2id[id]
             
+            # Get the path to one windowed sample of mocap data - [path, int id]
+            mocap_info = segment_info['mocap']
             
-            #Extrat segment ids
+            # Get the path to one windowed sample of acc data - [path, int id]
+            acc_info = segment_info['acc']
+            
+            # Extract the segment ids
             segment_id = mocap_info.pop()
             segment_id = acc_info.pop()
             
-            mocap_sig = torch.tensor( self.read_mocap_segment( mocap_info[0] ) ) #600 x 29 x 3
-            acc_sig = torch.tensor( self.read_acc_segment( acc_info[0] , segment_id ) ) #acc_frames x 3
-
-            #Extract acceleration features
-            acc_features = self.extract_acc_features(acc_sig) #ACC_FEATURES x 4
-    
-            #Add magnitude signal to acceleration
-            acc_mag = torch.from_numpy(self.magnitude(acc_sig))
-            acc_sig = torch.cat((acc_sig,acc_mag), dim=1) #acc_frames x 4
-
-            ######## Combine the windows of both signals #######
-
-            #concate features and acc data
-            acc_data = torch.cat((acc_features,acc_sig),dim=0) #acc_framesx4, ACC_FEATURESx4 -> acc_frames+ACC_FEATURES x 4
-            acc_ext = torch.zeros((self.mocap_frames, self.acc_frames + ACC_FEATURES, 4))
-            acc_ext[0,:,:] = acc_data #600 x 150+18 x 4
-
-            #add additional dim to mocap_data
-            mocap_ext = torch.zeros((self.mocap_frames,29,4))
-            mocap_ext[:,:,:3] = mocap_sig
-
-            data_sample = torch.cat((mocap_ext,acc_ext),dim=1) #600x29x3 + 600x162x3 = 200 x 191 x 3
+            # Read the mocap segment and convert it to a tensor
+            mocap_sig = torch.tensor( self.read_mocap_segment( mocap_info[0] ) )
             
-            return data_sample #mocap_frames x ACC_FEATUTES+acc_frames+num_joints x 3 = 191
+            # Read the acc segment and convert it to a tensor
+            acc_sig = torch.tensor( self.read_acc_segment( acc_info[0] , segment_id ) )
+            
+            # Extract the acceleration features
+            acc_features = self.extract_acc_features(acc_sig)
+            
+            # Add the magnitude signal to the acceleration
+            acc_mag = torch.from_numpy(self.magnitude(acc_sig))
+            acc_sig = torch.cat((acc_sig,acc_mag), dim=1)
+            
+            # Concatenate the features and acc data
+            acc_data = torch.cat((acc_features,acc_sig),dim=0)
+            
+            # Create a tensor to hold the extended acc data
+            acc_ext = torch.zeros((self.mocap_frames, self.acc_frames + len(acc_features), 4)) #len(acc_feature) inplace of ACC_FEATURES
+            
+            # Copy the acc data to the acc_ext tensor
+            acc_ext[0,:,:] = acc_data
+            
+            # Create a tensor to hold the extended mocap data
+            mocap_ext = torch.zeros((self.mocap_frames,29,4))
+            
+            # Copy the mocap data to the mocap_ext tensor
+            mocap_ext[:,:,:3] = mocap_sig
+            
+            # Concatenate the extended mocap and acc data
+            data_sample = torch.cat((mocap_ext,acc_ext),dim=1)
+            
+            # Return the data_sample tensor
+            return data_sample
 
 
     def __len__(self):
