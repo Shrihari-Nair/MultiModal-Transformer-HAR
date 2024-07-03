@@ -2,10 +2,7 @@
 This is the Accleration Only model, that takes just the acceleration data from the data sample and performs action recognition using acceleration only.
 '''
 from functools import partial
-# from collections import OrderedDict
-# from this import s
 from einops import rearrange
-# import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -13,8 +10,9 @@ from .model_utils import Block
 
 
 class Action_Recognition_Transformer(nn.Module):
-    # This class is the core of the Acceleration Only model. It takes in the acceleration data, processes it using a transformer, and outputs the class label.
-    def __init__(self, device, acc_frames=150, num_joints=29, in_chans=3, acc_coords=3, acc_embed=32, acc_features=18, adepth=4, num_heads=8, mlp_ratio=2., qkv_bias=True,
+    # This class is the code of the Acceleration Only model. It takes in the acceleration data, processes it using a transformer, and outputs the class label.
+    def __init__(self, device, acc_frames=150, num_joints=29, in_chans=3, acc_coords=3, acc_embed=32, 
+                 acc_features=18, adepth=4, num_heads=8, mlp_ratio=2., qkv_bias=True,
                  qk_scale=None, op_type='cls', embed_type='lin', fuse_acc_features=False,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.2,  norm_layer=None, num_classes=6):
 
