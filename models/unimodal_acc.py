@@ -99,42 +99,70 @@ class Action_Recognition_Transformer(nn.Module):
             nn.Linear(acc_embed, num_classes)
         )
 
-    def Acc_forward_features(self,x):
+    def Acc_forward_features(self, x):
+        """
+        Forward pass for the accelerometer transformer.
+        
+        Args:
+            x (torch.Tensor): Input tensor of shape (B, F, P, C), where B is the batch size,
+                             F is the number of frames, P is the number of points, and C is the number of channels.
+        
+        Returns:
+            torch.Tensor: Output tensor of shape (B, Sa), where Sa is the number of accelerometer embeddings.
+                          If op_type is 'cls', the output tensor is of shape (B, C), where C is the number of classes.
+        """
+        
+        # Get the batch size, number of frames, number of points, and number of channels from the input tensor
         b, f, p, c = x.shape  # b is batch size, f is number of frames, c is values per rading 3, p is readig per frames 1, B x Fa X 1 x 3
         
-        x = rearrange(x, 'b f p c  -> b f (p c)', ) # b x Fa x 3
+        # Reshape the input tensor to (B, F, P*C)
+        x = rearrange(x, 'b f p c  -> b f (p c)', ) 
         
+        # If the embed_type is 'conv', reshape the input tensor to (B, F, C, P) for convolutional embedding
         if self.embed_type == 'conv':
-            x = rearrange(x, '(b f) p c  -> (b f) c p',b=b ) # b x 3 x Fa  - Conv k liye channels first
-            x = self.Acc_coords_to_embedding(x) # B x c x p ->  B x Sa x p
+            x = rearrange(x, '(b f) p c  -> (b f) c p', b=b)  # b x 3 x Fa  - Conv k liye channels first
+            x = self.Acc_coords_to_embedding(x)  # B x c x p ->  B x Sa x p
             x = rearrange(x, '(b f) Sa p  -> (b f) p Sa', b=b)
         else: 
-            x = self.Acc_coords_to_embedding(x) #all acceleration data points for the action = Fa | op: b x Fa x Sa
+            # Else, perform linear embedding
+            x = self.Acc_coords_to_embedding(x)  # all acceleration data points for the action = Fa | op: b x Fa x Sa
         
-        class_token=torch.tile(self.acc_token,(b,1,1)) #(B,1,1) - 1 cls token for all frames
-
-        x = torch.cat((x,class_token),dim=1) 
-        _,_,Sa = x.shape
-    
+        # Create a class token for each frame
+        class_token = torch.tile(self.acc_token, (b, 1, 1))  # (B, 1, 1) - 1 cls token for all frames
+        
+        # Concatenate the class token with the input tensor
+        x = torch.cat((x, class_token), dim=1) 
+        
+        # Get the shape of the output tensor
+        _, _, Sa = x.shape
+        
+        # Add positional embeddings to the input tensor
         x += self.Acc_pos_embed
+        
+        # Apply dropout to the input tensor
         x = self.pos_drop(x)
-
+        
+        # Iterate over all the blocks in the accelerometer transformer
         for _, blk in enumerate(self.Acceletaion_blocks):
-
-           x = blk(x)
-            
+            x = blk(x)
+        
+        # Apply normalization to the output tensor
         x = self.Acc_norm(x)
         
-        #Extract cls token
-        cls_token = x[:,-1,:]
-        if self.op_type=='cls':
+        # Extract the class token from the output tensor
+        cls_token = x[:, -1, :]
+        
+        # If the op_type is 'cls', return the class token
+        if self.op_type == 'cls':
             return cls_token
         else:
-            x = x[:,:f,:]
+            # Else, reshape the output tensor to (B, Sa, F), pool it along the frame dimension, and reshape it to (B, Sa)
+            x = x[:, :f, :]
             x = rearrange(x, 'b f Sa -> b Sa f')
-            x = F.avg_pool1d(x,x.shape[-1],stride=x.shape[-1]) #b x Sa x 1
-            x = torch.reshape(x, (b,Sa))
-            return x #b x Sa
+            x = F.avg_pool1d(x, x.shape[-1], stride=x.shape[-1])  # b x Sa x 1
+            x = torch.reshape(x, (b, Sa))
+            
+            return x  # b x Sa
 
     def forward(self, inputs):
         #Input: B x MOCAP_FRAMES X  119 x 3
