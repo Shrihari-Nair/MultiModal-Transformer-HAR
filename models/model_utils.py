@@ -10,7 +10,7 @@ class Mlp(nn.Module):
             in_features (int): Number of input features.
             hidden_features (int, optional): Number of hidden features. Defaults to None.
                 If None, then it defaults to the value of in_features.
-            out_features (int, optional): Number of output features. Defaults to None.
+            out_features (int, optional): Number of output features. Defaults to None.  
                 If None, then it defaults to the value of in_features.
             act_layer (nn.Module, optional): Activation layer. Defaults to nn.GELU.
             drop (float, optional): Dropout rate. Defaults to 0.
