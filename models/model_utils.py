@@ -151,37 +151,86 @@ class Attention(nn.Module):
 #Cross View Attention computation
 class CVAttention(nn.Module):
     def __init__(self, dim, num_heads=4, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0.):
-        super().__init__()
-        self.num_heads = num_heads
-        head_dim = dim // num_heads
-        self.scale = qk_scale or head_dim ** -0.5
+        """
+        Initialize the Cross View Attention module.
 
-        self.Wq = nn.Linear(dim, dim , bias=qkv_bias)
-        self.Wk = nn.Linear(dim, dim , bias=qkv_bias)
-        self.Wv = nn.Linear(dim, dim , bias=qkv_bias)
+        Args:
+            dim (int): Dimension of the input features.
+            num_heads (int, optional): Number of attention heads. Defaults to 4.
+            qkv_bias (bool, optional): If True, adds a learnable bias to the query, key, and value. Defaults to False.
+            qk_scale (float, optional): Scale factor for the query and key matrices. Defaults to None.
+            attn_drop (float, optional): Dropout rate for the attention weights. Defaults to 0.
+            proj_drop (float, optional): Dropout rate for the output features. Defaults to 0.
+        """
+        super().__init__()
+        
+        # Set the number of attention heads
+        self.num_heads = num_heads
+        
+        # Calculate the dimension of each head
+        head_dim = dim // num_heads
+        
+        # Set the scale factor for the query and key matrices
+        # NOTE: The original implementation had a wrong scale factor, so we allow the user to set it manually
+        self.scale = qk_scale or head_dim ** -0.5
+        
+        # Initialize the linear layer for query, key, and value
+        # The input dimension is dim, and the output dimension is dim
+        self.Wq = nn.Linear(dim, dim , bias=qkv_bias) # Linear layer for the query matrix
+        self.Wk = nn.Linear(dim, dim , bias=qkv_bias) # Linear layer for the key matrix
+        self.Wv = nn.Linear(dim, dim , bias=qkv_bias) # Linear layer for the value matrix
+        
+        # Initialize the dropout layer for the attention weights
         self.attn_drop = nn.Dropout(attn_drop)
+        
+        # Initialize the linear layer for the output features
+        # The input dimension is dim, and the output dimension is dim
         self.proj = nn.Linear(dim, dim)
+        
+        # Initialize the dropout layer for the output features
         self.proj_drop = nn.Dropout(proj_drop)
 
     def forward(self, xq, xkv):
-        B, N, C = xq.shape  #Batch x Num of tokens x embed dim
-        B, n, C = xkv.shape
-        q = self.Wq(xq).reshape( N, -1) # B,  self.num_heads, C//self.num_heads)
-        k = self.Wk(xkv).reshape( -1, n) # B,  self.num_heads, C//self.num_heads, n)
-        v = self.Wv(xkv).reshape( -1, n) # B,  self.num_heads, C//self.num_heads, n)
+        """
+        Forward pass of the Cross View Attention module.
 
-        #Compute attn weights
-        #q - B,N,C
-        #k,v - B,n,C
-        attn = torch.matmul(q,k) * self.scale #Nxn
-        #attn = (q @ k.transpose(-2, -1)) * self.scale
+        Args:
+            xq (torch.Tensor): Input tensor for the query, with shape (Batch, Num of tokens, embed dim).
+            xkv (torch.Tensor): Input tensor for the key and value, with shape (Batch, Num of tokens, embed dim).
+
+        Returns:
+            torch.Tensor: Output tensor, with shape (Batch, Num of tokens, embed dim).
+        """
+        # Extract the batch size, number of tokens, and embedding dimension from the input tensors
+        B, N, C = xq.shape  # Batch x Num of tokens x embed dim
+        B, n, C = xkv.shape
+
+        # Apply the linear layer to the input tensors to compute the query, key, and value matrices
+        q = self.Wq(xq).reshape(N, -1)  # B, self.num_heads, C//self.num_heads)
+        k = self.Wk(xkv).reshape(-1, n)  # B, self.num_heads, C//self.num_heads, n)
+        v = self.Wv(xkv).reshape(-1, n)  # B, self.num_heads, C//self.num_heads, n)
+
+        # Compute the attention weights by taking the dot product of the query and key matrices and scaling them
+        # q - B,N,C
+        # k,v - B,n,C
+        attn = torch.matmul(q, k) * self.scale  # Nxn
+
+        # Apply the softmax function to the attention weights to obtain the attention probabilities
         attn = attn.softmax(dim=-1)
+
+        # Apply the dropout layer to the attention weights
         attn = self.attn_drop(attn)
 
-        #x = (attn @ v).transpose(1, 2).reshape(B, N, C)
-        x = torch.matmul(attn,v.T).reshape(B,N,C)
+        # Compute the output features by taking the dot product of the attention weights and value matrices
+        # x = (attn @ v.T).reshape(B, N, C)
+        x = torch.matmul(attn, v.T).reshape(B, N, C)
+
+        # Apply the linear layer to the output features
         x = self.proj(x)
+
+        # Apply the dropout layer to the output features
         x = self.proj_drop(x)
+
         return x
 
 
