@@ -1,23 +1,75 @@
 import torch
 import torch.nn as nn
 
-#Multi Layer Perceptron
 class Mlp(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
+        """
+        Initialize the Mlp class.
+        
+        Args:
+            in_features (int): Number of input features.
+            hidden_features (int, optional): Number of hidden features. Defaults to None.
+                If None, then it defaults to the value of in_features.
+            out_features (int, optional): Number of output features. Defaults to None.
+                If None, then it defaults to the value of in_features.
+            act_layer (nn.Module, optional): Activation layer. Defaults to nn.GELU.
+            drop (float, optional): Dropout rate. Defaults to 0.
+        """
+        # Call the parent class's (nn.Module) constructor
         super().__init__()
+        
+        # If out_features is None, then set it to the value of in_features
         out_features = out_features or in_features
+        
+        # If hidden_features is None, then set it to the value of in_features
         hidden_features = hidden_features or in_features
+        
+        # Create a linear layer with in_features as the number of input features
+        # and hidden_features as the number of output features
         self.fc1 = nn.Linear(in_features, hidden_features)
+        
+        # Create an instance of the activation layer specified by act_layer
         self.act = act_layer()
+        
+        # Create a linear layer with hidden_features as the number of input features
+        # and out_features as the number of output features
         self.fc2 = nn.Linear(hidden_features, out_features)
+        
+        # Create a dropout layer with drop as the dropout rate
         self.drop = nn.Dropout(drop)
 
     def forward(self, x):
+        """
+        Forward pass of the Mlp module.
+        
+        Args:
+            x (torch.Tensor): Input tensor of shape (batch_size, in_features).
+        
+        Returns:
+            torch.Tensor: Output tensor of shape (batch_size, out_features).
+        """
+        
+        # Apply the first linear layer, which performs a linear transformation of the input
+        # The output shape is (batch_size, hidden_features)
         x = self.fc1(x)
+        
+        # Apply the activation function to the output of the linear layer
+        # The output shape remains the same
         x = self.act(x)
+        
+        # Apply dropout to the output of the activation function
+        # The output shape remains the same
         x = self.drop(x)
+        
+        # Apply the second linear layer, which performs a linear transformation of the output
+        # The output shape is (batch_size, out_features)
         x = self.fc2(x)
+        
+        # Apply dropout to the output of the second linear layer
+        # The output shape remains the same
         x = self.drop(x)
+        
+        # Return the final output tensor
         return x
 
 #Attention computation
@@ -120,33 +172,113 @@ class Block(nn.Module):
 
     def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
             drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, blocktype=None):
+        """
+        Initialize the Transformer Block.
+
+        Args:
+            dim (int): Dimension of the input features.
+            num_heads (int): Number of attention heads.
+            mlp_ratio (float, optional): Ratio of the hidden dimension to the input dimension in the MLP.
+                Defaults to 4.
+            qkv_bias (bool, optional): If True, adds a learnable bias to the query, key, and value.
+                Defaults to False.
+            qk_scale (float, optional): Scale factor for the query and key matrices.
+                Defaults to None.
+            drop (float, optional): Dropout rate for the input features.
+                Defaults to 0.
+            attn_drop (float, optional): Dropout rate for the attention weights.
+                Defaults to 0.
+            drop_path (float, optional): Stochastic depth rate.
+                Defaults to 0.
+            act_layer (nn.Module, optional): Activation layer. Defaults to nn.GELU.
+            norm_layer (nn.Module, optional): Normalization layer. Defaults to nn.LayerNorm.
+            blocktype (str, optional): Type of block. Defaults to None.
+        """
         super().__init__()
-        self.norm1 = norm_layer(dim)
+        
+        # Initialize the normalization layers
+        self.norm1 = norm_layer(dim)  # Normalization layer after the self-attention layer
+        self.norm2 = norm_layer(dim)  # Normalization layer after the MLP
+        
+        # Initialize the self-attention layer
         self.attn = Attention(
             dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
+        
+        # Initialize the drop path layer
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
-        self.norm2 = norm_layer(dim)
-        mlp_hidden_dim = int(dim * mlp_ratio)
-        self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
+        
+        # Initialize the cross-view attention layer
         self.cross_attn=CVAttention(dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale, 
                 attn_drop=attn_drop, proj_drop=drop)
+        
+        # Calculate the hidden dimension for the MLP
+        mlp_hidden_dim = int(dim * mlp_ratio)
+        
+        # Initialize the MLP
+        self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
+        
+        # Set the block type
         self.blocktype=blocktype
 
     def forward(self, x):
+        """
+        Forward pass of the block.
+
+        Args:
+            x (torch.Tensor): Input tensor of shape (batch_size, channels, height, width).
+
+        Returns:
+            torch.Tensor: Output tensor of shape (batch_size, channels, height, width).
+                If the blocktype is 'Sensor', it returns a tuple of two tensors:
+                cv_signal (torch.Tensor): The tensor detached and cloned from x.
+                x (torch.Tensor): The input tensor after passing through the block.
+        """
+        # Initialize cv_signal as None
         cv_signal = None
+
+        # Apply self-attention and add the result to x
         x = x + self.drop_path(self.attn(self.norm1(x)))
-        if self.blocktype=='Sensor':
-            cv_signal=x.detach().clone()
+
+        # If the blocktype is 'Sensor', detach and clone x and store it in cv_signal
+        if self.blocktype == 'Sensor':
+            cv_signal = x.detach().clone()
+
+        # Apply the MLP and add the result to x
         x = x + self.drop_path(self.mlp(self.norm2(x)))
-        if self.blocktype=='Sensor':
-            return cv_signal,x
+
+        # If the blocktype is 'Sensor', return cv_signal and x as a tuple
+        if self.blocktype == 'Sensor':
+            return cv_signal, x
         else:
+            # Otherwise, return x alone
             return x
 
     def cross_forward(self,xq,xkv):
+        """
+        Forward pass of the block for cross view attention.
+
+        Args:
+            xq (torch.Tensor): Input tensor from the query view of shape (batch_size, channels, height, width).
+            xkv (torch.Tensor): Input tensor from the key and value view of shape (batch_size, channels, height, width).
+
+        Returns:
+            torch.Tensor: Output tensor of shape (batch_size, channels, height, width).
+        """
+        # Pass xkv through the normalization layer 1
         xkv=self.norm1(xkv)
+
+        # Pass xq through the normalization layer 1
         xq=self.norm1(xq)
+
+        # Apply self-attention to xq
         xq = xq + self.drop_path(self.attn(self.norm1(xq)))
+
+        # Apply cross view attention to xq and xkv
         x = xq + self.drop_path(self.cross_attn(xq,xkv))
+
+        # Apply the MLP to x
         x = x + self.drop_path(self.mlp(self.norm2(x)))
+
+        # Return the output tensor x
         return x
+
