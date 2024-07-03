@@ -75,29 +75,76 @@ class Mlp(nn.Module):
 #Attention computation
 class Attention(nn.Module):
     def __init__(self, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0.):
-        super().__init__()
+        """
+        Initialize the Attention module.
+        
+        Args:
+            dim (int): Dimension of the input features.
+            num_heads (int, optional): Number of attention heads. Defaults to 8.
+            qkv_bias (bool, optional): If True, adds a learnable bias to the query, key, and value. Defaults to False.
+            qk_scale (float, optional): Scale factor for the query and key matrices. Defaults to None.
+            attn_drop (float, optional): Dropout rate for the attention weights. Defaults to 0.
+            proj_drop (float, optional): Dropout rate for the output features. Defaults to 0.
+        """
+        super().__init__()  # Call the constructor of the superclass (nn.Module)
+        
+        # Set the number of attention heads
         self.num_heads = num_heads
+        
+        # Calculate the dimension of each head
         head_dim = dim // num_heads
-        # NOTE scale factor was wrong in my original version, can set manually to be compat with prev weights
+        
+        # Set the scale factor for the query and key matrices
+        # NOTE: The original implementation had a wrong scale factor, so we allow the user to set it manually
         self.scale = qk_scale or head_dim ** -0.5
-
+        
+        # Initialize the linear layer for query, key, and value
+        # The input dimension is dim, and the output dimension is 3 times dim
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        
+        # Initialize the dropout layer for the attention weights
         self.attn_drop = nn.Dropout(attn_drop)
+        
+        # Initialize the linear layer for the output features
+        # The input dimension is dim, and the output dimension is dim
         self.proj = nn.Linear(dim, dim)
+        
+        # Initialize the dropout layer for the output features
         self.proj_drop = nn.Dropout(proj_drop)
 
     def forward(self, x):
-        B, N, C = x.shape  #Batch x Num of tokens x embed dim
+        # Reshape the input tensor x to be (Batch, Num of tokens, embed dim)
+        B, N, C = x.shape
+        
+        # Compute the query, key, and value matrices using the linear layer
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]   # make torchscript happy (cannot use tensor as tuple)
-
+        
+        # Split the query, key, and value matrices into separate tensors
+        # This is done to make the code compatible with PyTorch Script (torchscript does not support tuples of tensors)
+        # Instead, we use tensor indexing to access the elements of the tensor
+        q, k, v = qkv[0], qkv[1], qkv[2]
+        
+        # Compute the attention weights by taking the dot product of the query and key matrices
+        # The attention weights are then scaled by the scale factor
         attn = (q @ k.transpose(-2, -1)) * self.scale
+        
+        # Apply the softmax function to the attention weights to obtain the attention probabilities
         attn = attn.softmax(dim=-1)
+        
+        # Apply the dropout layer to the attention weights
         attn = self.attn_drop(attn)
-
+        
+        # Compute the output features by taking the dot product of the attention weights and value matrices
+        # The output features are then reshaped to be (Batch, Num of tokens, embed dim)
         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
+        
+        # Apply the linear layer to the output features
         x = self.proj(x)
+        
+        # Apply the dropout layer to the output features
         x = self.proj_drop(x)
+        
+        # Return the output features
         return x
 
 
