@@ -69,9 +69,9 @@ epoch_acc_train=[]
 epoch_acc_val=[]
 
 #Label smoothing
-smoothing=0.1
-criterion = LabelSmoothingCrossEntropy(smoothing=smoothing)
-print("Loss: LSC ",smoothing)
+# smoothing=0.1
+# criterion = LabelSmoothingCrossEntropy(smoothing=smoothing)
+# print("Loss: LSC ",smoothing)
 
 best_accuracy = 0.
 
@@ -85,7 +85,6 @@ for epoch in range(max_epochs):
     cnt = 0.
     for inputs, targets in training_generator:
         inputs = inputs.to(device) 
-        #print("Input batch: ",inputs)
         targets = targets.to(device)
 
         optimizer.zero_grad()
