@@ -3,7 +3,6 @@ This is Skeleton Only model, that uses skeletal joints from data sample and extr
 '''
 from functools import partial
 from einops import rearrange
-# import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -35,8 +34,8 @@ class ActRecogTransformer(nn.Module):
         """
         super().__init__()
 
-        norm_layer = norm_layer or partial(nn.LayerNorm, eps=1e-6) #Momil:embed_dim_ratio is spatial transformer's patch embed size
-        temp_embed = spatial_embed*(num_joints)   #### temporal embed_dim is spatial embed*(num_jonits) - as one frame is of this dim! and v have acc_frames + sp_frames
+        norm_layer = norm_layer or partial(nn.LayerNorm, eps=1e-6) #embed_dim_ratio is spatial transformer's patch embed size
+        temp_embed = spatial_embed*(num_joints)   #### temporal embed_dim is spatial embed*(num_joints) - as one frame is of this dim! and v have acc_frames + sp_frames
         temp_frames = mocap_frames  #Input frames to the temporal transformer are frames from mocap sensor!
         acc_embed = temp_embed #Since both signals needs to be concatenated, their dm is similar
         self.op_type = op_type
