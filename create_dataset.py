@@ -11,9 +11,6 @@ pd.options.mode.chained_assignment = None  # default='warn'
 MOCAP_SEGMENT = cfg.data_params['MOCAP_SEGMENT']
 ACC_SEGMENT = cfg.data_params['ACC_SEGMENT']
 
-
-
-#CREATE PYTORCH DATASET
 '''
 Input Args:
 data = ncrc or ntu
