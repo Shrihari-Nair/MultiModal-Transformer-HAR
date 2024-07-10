@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from .model_utils import Block
 
 
-class ActRecogTransformer(nn.Module):
+class Action_Recognition_Transformer(nn.Module):
     def __init__(self, device='cpu', mocap_frames=600, num_joints=29, in_chans=3,  spatial_embed=32, sdepth=4, tdepth=4,
                  num_heads=8, mlp_ratio=2., qkv_bias=True, qk_scale=None, op_type='cls', embed_type='lin',
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.2,  norm_layer=None, num_classes=6):
@@ -37,7 +37,7 @@ class ActRecogTransformer(nn.Module):
         norm_layer = norm_layer or partial(nn.LayerNorm, eps=1e-6) #embed_dim_ratio is spatial transformer's patch embed size
         temp_embed = spatial_embed*(num_joints)   #### temporal embed_dim is spatial embed*(num_joints) - as one frame is of this dim! and v have acc_frames + sp_frames
         temp_frames = mocap_frames  #Input frames to the temporal transformer are frames from mocap sensor!
-        acc_embed = temp_embed #Since both signals needs to be concatenated, their dm is similar
+        # acc_embed = temp_embed #Since both signals needs to be concatenated, their dm is similar
         self.op_type = op_type
         self.embed_type = embed_type
         

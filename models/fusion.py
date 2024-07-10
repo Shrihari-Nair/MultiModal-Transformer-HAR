@@ -1,14 +1,4 @@
-'''
-This is simple fusion model, that uses both acceleration and skeletal joints data,
-computes their features using single modality models 
-and simply concats the final cls tokens of each model before performing final action recogniton.
-'''
-
-# import math
-# import logging
 from functools import partial
-# from collections import OrderedDict
-# from this import s
 from einops import rearrange
 import torch
 import torch.nn as nn
@@ -16,7 +6,7 @@ import torch.nn.functional as F
 from .model_utils import Block
 
 
-class ActRecogTransformer(nn.Module):
+class Action_Recognition_Transformer(nn.Module):
     def __init__(self, device='cpu',  mocap_frames=600, acc_frames=150, num_joints=29, in_chans=3, acc_coords=3, acc_features=18, spatial_embed=32, sdepth=4,adepth=4,tdepth=4,
                  num_heads=8, mlp_ratio=2., qkv_bias=True, qk_scale=None, op_type='cls', embed_type='lin',fuse_acc_features=False,
                  drop_rate=0.05, attn_drop_rate=0.05, drop_path_rate=0.2,  norm_layer=None, num_classes=6):
