@@ -85,7 +85,7 @@ class Action_Recognition_Transformer(nn.Module):
         self.joint_coords = in_chans
 
         #Temporal embedding
-        self.Temporal_pos_embed = nn.Parameter(torch.zeros(1, temp_frames+1, temp_embed)) #additional pos embedding zero for class token
+        self.temporal_pos_embed = nn.Parameter(torch.zeros(1, temp_frames+1, temp_embed)) #additional pos embedding zero for class token
         self.temp_frames = mocap_frames
         self.tdepth = tdepth
 
@@ -219,10 +219,10 @@ class Action_Recognition_Transformer(nn.Module):
     def temporal_forward_features(self, x, cls_token,  cv_signals):
 
         b,f,St = x.shape
-        x = torch.cat((x,cls_token), dim=1) #B x mocap_frames +1 x temp_embed | temp_embed = num_joints*Se
+        x = torch.cat((x,cls_token), dim=1) # B x mocap_frames +1 x temp_embed | temp_embed = num_joints*Se
         
         b  = x.shape[0]
-        x += self.Temporal_pos_embed
+        x += self.temporal_pos_embed
         x = self.pos_drop(x)
 
         #Multi headed self attention
