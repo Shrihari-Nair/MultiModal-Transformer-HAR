@@ -100,7 +100,7 @@ class ActRecogTransformer(nn.Module):
         )
 
 
-    def Spatial_forward_features(self, x):
+    def spatial_forward_features(self, x):
         b, f, p, c = x.shape  # b is batch size, f is number of frames, p is number of joints, c is in_chan 3 
         x = rearrange(x, 'b f p c  -> (b f) p c', ) 
 
@@ -133,7 +133,7 @@ class ActRecogTransformer(nn.Module):
     
         return x, cls_token #cls token and encoded features returned
 
-    def Temp_forward_features(self, x, cls_token):
+    def temporal_forward_features(self, x, cls_token):
         b,f,St = x.shape
         x = torch.cat((x,cls_token), dim=1) #B x mocap_frames +1 x temp_embed | temp_embed = num_joints*Se
         
@@ -162,20 +162,20 @@ class ActRecogTransformer(nn.Module):
 
     def forward(self, inputs):
         #Input: B x MOCAP_FRAMES X  149 x 3
-        b,_,_,c = inputs.shape
+        b,_,_,c = inputs.shape  
 
         #Extract skeletal signal from input
         x = inputs[:,:, :self.num_joints, :self.joint_coords] #B x Fs x num_joints x 3
         
         
         #Get skeletal features 
-        x,cls_token = self.Spatial_forward_features(x) #in: B x Fs x num_joints x 3 , op: B x Fs x (num_joints*Se)
+        x,cls_token = self.spatial_forward_features(x) #in: B x Fs x num_joints x 3 , op: B x Fs x (num_joints*Se)
 
         #Pass cls token to temporal transformer
         temp_cls_token = self.proj_up_clstoken(cls_token) #in: B x mocap_frames * Se -> op: B x num_joints*Se
         temp_cls_token = torch.unsqueeze(temp_cls_token,dim=1) #op: B x 1 x num_joints*Se
         
-        x = self.Temp_forward_features(x,temp_cls_token) #in: B x Fs x (num_joints*Se) , op: B x St
+        x = self.temporal_forward_features(x,temp_cls_token) #in: B x Fs x (num_joints*Se) , op: B x St
 
         #Concat features along frame dimension
         x = self.class_head(x)
