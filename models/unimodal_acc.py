@@ -191,10 +191,3 @@ class Action_Recognition_Transformer(nn.Module):
         sx = self.class_head(sx)
 
         return F.log_softmax(sx,dim=1)
-
-'''
-model=Action_Recognition_Transformer()
-x=torch.randn((14,600,197,4))
-op=model(x)
-print("Op shape: ",op.shape)
-'''
