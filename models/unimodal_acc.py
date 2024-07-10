@@ -1,6 +1,3 @@
-'''
-This is the Accleration Only model, that takes just the acceleration data from the data sample and performs action recognition using acceleration only.
-'''
 from functools import partial
 from einops import rearrange
 import torch
@@ -15,8 +12,9 @@ class Action_Recognition_Transformer(nn.Module):
                  acc_features=18, adepth=4, num_heads=8, mlp_ratio=2., qkv_bias=True,
                  qk_scale=None, op_type='cls', embed_type='lin', fuse_acc_features=False,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.2,  norm_layer=None, num_classes=6):
+        """
+        Initialize the Acceleration Only Model.
 
-        """    ##########hybrid_backbone=None, representation_size=None,
         Args:
             acc_frames (int): input num frames for acc sensor
             num_joints (int, tuple): joints number
@@ -64,12 +62,14 @@ class Action_Recognition_Transformer(nn.Module):
 
         # Create the linear or convolutional layer to convert the coordinates to the embedding space
         if embed_type=='lin':
-            self.Acc_coords_to_embedding = nn.Linear(acc_coords, acc_embed) #Linear patch embedding
+            # Create a linear layer to convert the coordinates to the embedding space
+            self.acc_coords_to_embedding = nn.Linear(acc_coords, acc_embed) #Linear patch embedding
         else:
-            self.Acc_coords_to_embedding = nn.Conv1d(acc_coords, acc_embed, 1, 1) #Conv patch embedding
+            # Create a convolutional layer to convert the coordinates to the embedding space
+            self.acc_coords_to_embedding = nn.Conv1d(acc_coords, acc_embed, 1, 1) #Conv patch embedding
         
         # Create the positional embedding for the accelerometer frames
-        self.Acc_pos_embed = nn.Parameter(torch.zeros(1, acc_frames+1, acc_embed)) #1 location per frame - embed: 1xloc_embed from 1xloc_cords
+        self.acc_pos_embed = nn.Parameter(torch.zeros(1, acc_frames+1, acc_embed)) #1 location per frame - embed: 1xloc_embed from 1xloc_cords
         self.acc_token = nn.Parameter(torch.zeros(1,1,acc_embed))
         self.acc_frames = acc_frames
         self.adepth = adepth
@@ -80,14 +80,15 @@ class Action_Recognition_Transformer(nn.Module):
         # Create the list of blocks for the accelerometer transformer
         adpr = [x.item() for x in torch.linspace(0, drop_path_rate, adepth)]  #Stochastic depth decay rule
 
-        self.Acceletaion_blocks = nn.ModuleList([
+        self.acceleration_blocks = nn.ModuleList([
+            # Create a block for the accelerometer transformer
             Block(
                 dim=acc_embed, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
                 drop=drop_rate, attn_drop=attn_drop_rate, drop_path=adpr[i], norm_layer=norm_layer)
             for i in range(adepth)])
 
         # Create the normalization layer for the accelerometer embeddings
-        self.Acc_norm = norm_layer(acc_embed)
+        self.acc_norm = norm_layer(acc_embed)
         self.pos_drop = nn.Dropout(p=drop_rate)
 
         # Create the linear layer to extract features from the acceleration signal
@@ -95,11 +96,13 @@ class Action_Recognition_Transformer(nn.Module):
 
         # Create the classification head for outputting the class label
         self.class_head = nn.Sequential(
+            # Create a layer normalization layer
             nn.LayerNorm(acc_embed),
+            # Create a linear layer to extract features from the acceleration signal
             nn.Linear(acc_embed, num_classes)
         )
 
-    def Acc_forward_features(self, x):
+    def acc_forward_features(self, x):
         """
         Forward pass for the accelerometer transformer.
         
@@ -113,7 +116,7 @@ class Action_Recognition_Transformer(nn.Module):
         """
         
         # Get the batch size, number of frames, number of points, and number of channels from the input tensor
-        b, f, p, c = x.shape  # b is batch size, f is number of frames, c is values per rading 3, p is readig per frames 1, B x Fa X 1 x 3
+        b, f, p, c = x.shape  # b is batch size, f is number of frames, c is values per reading 3, p is reading per frames 1, B x Fa X 1 x 3
         
         # Reshape the input tensor to (B, F, P*C)
         x = rearrange(x, 'b f p c  -> b f (p c)', ) 
@@ -121,11 +124,11 @@ class Action_Recognition_Transformer(nn.Module):
         # If the embed_type is 'conv', reshape the input tensor to (B, F, C, P) for convolutional embedding
         if self.embed_type == 'conv':
             x = rearrange(x, '(b f) p c  -> (b f) c p', b=b)  # b x 3 x Fa  - Conv k liye channels first
-            x = self.Acc_coords_to_embedding(x)  # B x c x p ->  B x Sa x p
+            x = self.acc_coords_to_embedding(x)  # B x c x p ->  B x Sa x p
             x = rearrange(x, '(b f) Sa p  -> (b f) p Sa', b=b)
         else: 
             # Else, perform linear embedding
-            x = self.Acc_coords_to_embedding(x)  # all acceleration data points for the action = Fa | op: b x Fa x Sa
+            x = self.acc_coords_to_embedding(x)  # all acceleration data points for the action = Fa | op: b x Fa x Sa
         
         # Create a class token for each frame
         class_token = torch.tile(self.acc_token, (b, 1, 1))  # (B, 1, 1) - 1 cls token for all frames
@@ -137,17 +140,17 @@ class Action_Recognition_Transformer(nn.Module):
         _, _, Sa = x.shape
         
         # Add positional embeddings to the input tensor
-        x += self.Acc_pos_embed
+        x += self.acc_pos_embed
         
         # Apply dropout to the input tensor
         x = self.pos_drop(x)
         
         # Iterate over all the blocks in the accelerometer transformer
-        for _, blk in enumerate(self.Acceletaion_blocks):
+        for _, blk in enumerate(self.acceleration_blocks):
             x = blk(x)
         
         # Apply normalization to the output tensor
-        x = self.Acc_norm(x)
+        x = self.acc_norm(x)
         
         # Extract the class token from the output tensor
         cls_token = x[:, -1, :]
@@ -178,7 +181,7 @@ class Action_Recognition_Transformer(nn.Module):
 
 
         #Get acceleration features
-        sx = self.Acc_forward_features(sx)
+        sx = self.acc_forward_features(sx)
         #print("Input to ACC Transformer: ",sx) #in: F x Fa x 3 x 1,  op: B x St
         sxf = self.acc_features_embed(sxf)
         if self.fuse_acc_features:
