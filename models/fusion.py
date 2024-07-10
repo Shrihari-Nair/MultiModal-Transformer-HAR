@@ -128,13 +128,13 @@ class Action_Recognition_Transformer(nn.Module):
             nn.Linear(acc_embed+temp_embed, num_classes)
         )
 
-    def Acc_forward_features(self,x):
+    def acc_forward_features(self,x):
         b, f, p, c = x.shape  # b is batch size, f is number of frames, c is values per rading 3, p is readig per frames 1, B x Fa X 1 x 3
         
         x = rearrange(x, 'b f p c  -> b f (p c)', ) # b x Fa x 3
         
         if self.embed_type == 'conv':
-            x = rearrange(x, '(b f) p c  -> (b f) c p',b=b ) # b x 3 x Fa  - Conv k liye channels first
+            x = rearrange(x, '(b f) p c  -> (b f) c p',b=b) # b x 3 x Fa  - Conv k liye channels first
             x = self.Acc_coords_to_embedding(x) # B x c x p ->  B x Sa x p
             x = rearrange(x, '(b f) Sa p  -> (b f) p Sa', b=b)
         else: 
@@ -166,7 +166,7 @@ class Action_Recognition_Transformer(nn.Module):
             x = torch.reshape(x, (b,Sa))
             return x #b x Sa
 
-    def Spatial_forward_features(self, x):
+    def spatial_forward_features(self, x):
         b, f, p, c = x.shape  # b is batch size, f is number of frames, p is number of joints, c is in_chan 3 
         x = rearrange(x, 'b f p c  -> (b f) p c', ) 
 
@@ -199,7 +199,7 @@ class Action_Recognition_Transformer(nn.Module):
     
         return x, cls_token #cls token and encoded features returned
 
-    def Temp_forward_features(self, x, cls_token):
+    def temporal_forward_features(self, x, cls_token):
         b,f,St = x.shape
         x = torch.cat((x,cls_token), dim=1) #B x mocap_frames +1 x temp_embed | temp_embed = num_joints*Se
         
@@ -239,16 +239,16 @@ class Action_Recognition_Transformer(nn.Module):
         sx = torch.reshape(sx, (b,-1,1,self.acc_coords) ) #B x Fa x 1 x 3
         
         #Get skeletal features 
-        x,cls_token = self.Spatial_forward_features(x) #in: B x Fs x num_joints x 3 , op: B x Fs x (num_joints*Se)
+        x,cls_token = self.spatial_forward_features(x) #in: B x Fs x num_joints x 3 , op: B x Fs x (num_joints*Se)
 
         #Pass cls token to temporal transformer
         temp_cls_token = self.proj_up_clstoken(cls_token) #in: B x mocap_frames * Se -> op: B x num_joints*Se
         temp_cls_token = torch.unsqueeze(temp_cls_token,dim=1) #op: B x 1 x num_joints*Se
         
-        x = self.Temp_forward_features(x,temp_cls_token) #in: B x Fs x (num_joints*Se) , op: B x St
+        x = self.temporal_forward_features(x,temp_cls_token) #in: B x Fs x (num_joints*Se) , op: B x St
 
         #Get acceleration features 
-        sx = self.Acc_forward_features(sx) #in: F x Fa x 3 x 1,  op: B x St
+        sx = self.acc_forward_features(sx) #in: F x Fa x 3 x 1,  op: B x St
         sxf = self.acc_features_embed(sxf)
         if self.fuse_acc_features:
             sx+= sxf #Add the features signal to acceleration signal
