@@ -4,10 +4,7 @@ Computes their features from single modality models and also performs cross view
 The final cls tokens of each model are added before final classification decision.
 '''
 from functools import partial
-# from collections import OrderedDict
-# from this import s
 from einops import rearrange
-# import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -48,7 +45,7 @@ class Action_Recognition_Transformer(nn.Module):
         """
         super().__init__()
 
-        norm_layer = norm_layer or partial(nn.LayerNorm, eps=1e-6) #Momil:embed_dim_ratio is spatial transformer's patch embed size
+        norm_layer = norm_layer or partial(nn.LayerNorm, eps=1e-6) #embed_dim_ratio is spatial transformer's patch embed size
         temp_embed = spatial_embed*(num_joints)   #### temporal embed_dim is spatial embed*(num_jonits) - as one frame is of this dim! and v have acc_frames + sp_frames
         temp_frames = mocap_frames  #Input frames to the temporal transformer are frames from mocap sensor!
         acc_embed = temp_embed #Since both signals needs to be concatenated, their dm is similar
@@ -98,7 +95,7 @@ class Action_Recognition_Transformer(nn.Module):
         else:
             self.Acc_coords_to_embedding = nn.Conv1d(acc_coords, acc_embed, 1, 1) #Conv patch embedding
         
-        self.Acc_pos_embed = nn.Parameter(torch.zeros(1, acc_frames+1, acc_embed)) #1 location per frame - embed: 1xloc_embed from 1xloc_cords
+        self.acc_pos_embed = nn.Parameter(torch.zeros(1, acc_frames+1, acc_embed)) #1 location per frame - embed: 1xloc_embed from 1xloc_cords
         self.acc_token = nn.Parameter(torch.zeros(1,1,acc_embed))
         self.acc_frames = acc_frames
         self.adepth = adepth
@@ -117,21 +114,21 @@ class Action_Recognition_Transformer(nn.Module):
                 drop=drop_rate, attn_drop=attn_drop_rate, drop_path=sdpr[i], norm_layer=norm_layer)
             for i in range(sdepth)])
 
-        self.Acceletaion_blocks = nn.ModuleList([
+        self.acceleration_blocks = nn.ModuleList([
             Block(
                 dim=acc_embed, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
                 drop=drop_rate, attn_drop=attn_drop_rate, drop_path=adpr[i], norm_layer=norm_layer,blocktype='Sensor')
             for i in range(adepth)])
 
-        self.Temporal_blocks = nn.ModuleList([
+        self.temporal_blocks = nn.ModuleList([
             Block(
                 dim=temp_embed, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
                 drop=drop_rate, attn_drop=attn_drop_rate, drop_path=tdpr[i], norm_layer=norm_layer)
             for i in range(tdepth)])
 
         self.Spatial_norm = norm_layer(spatial_embed)
-        self.Acc_norm = norm_layer(acc_embed)
-        self.Temporal_norm = norm_layer(temp_embed)
+        self.acc_norm = norm_layer(acc_embed)
+        self.temporal_norm = norm_layer(temp_embed)
         self.pos_drop = nn.Dropout(p=drop_rate)
 
         #Linear layer to extract features from the acc features signal
@@ -144,7 +141,7 @@ class Action_Recognition_Transformer(nn.Module):
             nn.Linear(temp_embed, num_classes)
         )
 
-    def Acc_forward_features(self,x):
+    def acc_forward_features(self,x):
         b, f, p, c = x.shape  # b is batch size, f is number of frames, c is values per rading 3, p is readig per frames 1, B x Fa X 1 x 3
         
         x = rearrange(x, 'b f p c  -> b f (p c)', ) # b x Fa x 3
@@ -161,22 +158,19 @@ class Action_Recognition_Transformer(nn.Module):
         x = torch.cat((x,class_token),dim=1) 
         _,_,Sa = x.shape
     
-        x += self.Acc_pos_embed
+        x += self.acc_pos_embed
         x = self.pos_drop(x)
 
         ##Get cross fusion indexes
-        mid=(self.adepth//2) - 1
-        end=self.adepth - 1
+        # mid=(self.adepth//2) - 1
+        # end=self.adepth - 1
         cv_signals=[]
 
-        for idx, blk in enumerate(self.Acceletaion_blocks):
-
+        for idx, blk in enumerate(self.acceleration_blocks):
             cv_sig,x=blk(x)
-            
             if True: #idx==mid or idx==end:
                 cv_signals.append(cv_sig)
-            
-        x = self.Acc_norm(x)
+        x = self.acc_norm(x)
         
         #Extract cls token
         cls_token = x[:,-1,:]
@@ -189,7 +183,7 @@ class Action_Recognition_Transformer(nn.Module):
             x = torch.reshape(x, (b,Sa))
             return x,cv_signals #b x Sa
 
-    def Spatial_forward_features(self, x):
+    def spatial_forward_features(self, x):
         b, f, p, c = x.shape  # b is batch size, f is number of frames, p is number of joints, c is in_chan 3 
         x = rearrange(x, 'b f p c  -> (b f) p c', ) 
 
@@ -222,7 +216,7 @@ class Action_Recognition_Transformer(nn.Module):
     
         return x, cls_token #cls token and encoded features returned
 
-    def Temp_forward_features(self, x, cls_token,  cv_signals):
+    def temporal_forward_features(self, x, cls_token,  cv_signals):
 
         b,f,St = x.shape
         x = torch.cat((x,cls_token), dim=1) #B x mocap_frames +1 x temp_embed | temp_embed = num_joints*Se
@@ -232,26 +226,23 @@ class Action_Recognition_Transformer(nn.Module):
         x = self.pos_drop(x)
 
         #Multi headed self attention
-        #for blk in self.Temporal_blocks:
+        #for blk in self.temporal_blocks:
             #x = blk(x)
         
         #Compute CV fusion block index, -1 bcz zero-indexed
-        mid = (self.tdepth//2) - 1
-        end = self.tdepth - 1 
+        # mid = (self.tdepth//2) - 1
+        # end = self.tdepth - 1 
 
         #Cross view attention fusion from sensor encoded signal
         cv_idx=0
-        for idx,blk in enumerate(self.Temporal_blocks):
+        for idx,blk in enumerate(self.temporal_blocks):
             
             if True: #idx==mid or idx==end:
-                
                 x=blk.cross_forward(xq=x,xkv=cv_signals[cv_idx])
                 cv_idx+=1
-            
             else:
                 x = blk(x)
-        
-        x = self.Temporal_norm(x)
+        x = self.temporal_norm(x)
         
         ###Extract Class token head from the output
         if self.op_type=='cls':
@@ -281,20 +272,20 @@ class Action_Recognition_Transformer(nn.Module):
         
 
         #Get acceleration features
-        sx,cv_signals = self.Acc_forward_features(sx) #in: F x Fa x 3 x 1,  op: B x St
+        sx,cv_signals = self.acc_forward_features(sx) #in: F x Fa x 3 x 1,  op: B x St
         sxf = self.acc_features_embed(sxf)
         if self.fuse_acc_features:
             sx+= sxf #Add the features signal to acceleration signal
         
         #Get skeletal features 
-        x,cls_token = self.Spatial_forward_features(x) #in: B x Fs x num_joints x 3 , op: B x Fs x (num_joints*Se)
+        x,cls_token = self.spatial_forward_features(x) #in: B x Fs x num_joints x 3 , op: B x Fs x (num_joints*Se)
 
         #Pass cls token to temporal transformer
         temp_cls_token = self.proj_up_clstoken(cls_token) #in: B x mocap_frames * Se -> op: B x num_joints*Se
         temp_cls_token = torch.unsqueeze(temp_cls_token,dim=1) #op: B x 1 x num_joints*Se
         
 
-        x = self.Temp_forward_features(x,temp_cls_token,cv_signals) #in: B x Fs x (num_joints*Se) , op: B x St
+        x = self.temporal_forward_features(x,temp_cls_token,cv_signals) #in: B x Fs x (num_joints*Se) , op: B x St
 
         
         #Concat features along frame dimension
