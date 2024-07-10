@@ -129,30 +129,53 @@ class Action_Recognition_Transformer(nn.Module):
         )
 
     def acc_forward_features(self,x):
-        b, f, p, c = x.shape  # b is batch size, f is number of frames, c is values per rading 3, p is readig per frames 1, B x Fa X 1 x 3
+        """
+        Forward pass for the accelerometer transformer.
         
+        Args:
+            x (torch.Tensor): Input tensor of shape (B, F, P, C), where B is the batch size,
+                             F is the number of frames, P is the number of points, and C is the number of channels.
+        
+        Returns:
+            torch.Tensor: Output tensor of shape (B, Sa), where Sa is the number of accelerometer embeddings.
+                          If op_type is 'cls', the output tensor is of shape (B, C), where C is the number of classes.
+        """
+        
+        # Get the batch size, number of frames, number of points, and number of channels from the input tensor
+        b, f, p, c = x.shape  # b is batch size, f is number of frames, c is values per reading 3, p is reading per frames 1, B x Fa X 1 x 3
+        
+        # Reshape the input tensor to (B, F, P*C)
         x = rearrange(x, 'b f p c  -> b f (p c)', ) # b x Fa x 3
         
         if self.embed_type == 'conv':
+            # If the embed_type is 'conv', reshape the input tensor to (B, F, C, P) for convolutional embedding
             x = rearrange(x, '(b f) p c  -> (b f) c p',b=b) # b x 3 x Fa  - Conv k liye channels first
             x = self.Acc_coords_to_embedding(x) # B x c x p ->  B x Sa x p
             x = rearrange(x, '(b f) Sa p  -> (b f) p Sa', b=b)
         else: 
+            # Else, perform linear embedding
             x = self.Acc_coords_to_embedding(x) #all acceleration data points for the action = Fa | op: b x Fa x Sa
 
-        
-        
+        # Create a class token for each frame
         class_token=torch.tile(self.acc_token,(b,1,1)) #(B,1,1) - 1 cls token for all frames
 
+        # Concatenate the class token with the input tensor
         x = torch.cat((x,class_token),dim=1) 
+        
+        # Get the shape of the output tensor
         _,_,Sa = x.shape
-    
+        
+        # Add positional embeddings to the input tensor
         x += self.Acc_pos_embed
+        
+        # Apply dropout to the input tensor
         x = self.pos_drop(x)
-
+        
+        # Iterate over all the blocks in the accelerometer transformer
         for blk in self.Acceletaion_blocks:
             x =blk(x)
-            
+        
+        # Apply normalization to the output tensor
         x = self.Acc_norm(x)
         
         #Extract cls token
@@ -160,32 +183,62 @@ class Action_Recognition_Transformer(nn.Module):
         if self.op_type=='cls':
             return cls_token
         else:
+            # Reshape the output tensor to (B, F, Sa)
             x = x[:,:f,:]
             x = rearrange(x, 'b f Sa -> b Sa f')
+            
+            # Apply average pooling to the output tensor along the frame axis
             x = F.avg_pool1d(x,x.shape[-1],stride=x.shape[-1]) #b x Sa x 1
+            
+            # Reshape the output tensor to (B, Sa)
             x = torch.reshape(x, (b,Sa))
             return x #b x Sa
 
     def spatial_forward_features(self, x):
+        """
+        Forward pass for the spatial transformer.
+        
+        Args:
+            x (torch.Tensor): Input tensor of shape (B, F, P, C), where B is the batch size,
+                             F is the number of frames, P is the number of joints, and C is the number of channels.
+        
+        Returns:
+            torch.Tensor: Tuple containing the spatially encoded features (B, F, P*Se) and the class token (B, F*Se).
+                          If op_type is 'cls', the class token is returned instead of the spatially encoded features.
+        """
+        
+        # Get the batch size, number of frames, number of joints, and number of channels from the input tensor
         b, f, p, c = x.shape  # b is batch size, f is number of frames, p is number of joints, c is in_chan 3 
+        
+        # Reshape the input tensor to (B*F, P, C)
         x = rearrange(x, 'b f p c  -> (b f) p c', ) 
-
+        
         if self.embed_type == 'conv':
+            # If the embed_type is 'conv', reshape the input tensor to (B*F, C, P) for convolutional embedding
             x = rearrange(x, '(b f) p c  -> (b f) c p',b=b ) # b x 3 x Fa  - Conv k liye channels first
             x = self.Spatial_patch_to_embedding(x) # B x c x p ->  B x Se x p
             x = rearrange(x, '(b f) Se p  -> (b f) p Se', b=b)
         else: 
+            # Else, perform linear embedding
             x = self.Spatial_patch_to_embedding(x) # B x p x c ->  B x p x Se
         
-        class_token=torch.tile(self.spat_token,(b*f,1,1)) #(B,1,1)
+        # Create a class token for each frame
+        class_token=torch.tile(self.spat_token,(b*f,1,1)) #(B,1,1) - 1 cls token for all frames
+        
+        # Concatenate the class token with the input tensor
         x = torch.cat((x,class_token),dim=1) # b x (p+1) x Se 
-
+        
+        # Add positional embeddings to the input tensor
         x += self.Spatial_pos_embed
+        
+        # Apply dropout to the input tensor
         x = self.pos_drop(x)
-
+        
+        # Iterate over all the blocks in the spatial transformer
         for blk in self.Spatial_blocks:
             x = blk(x)
-
+        
+        # Apply normalization to the output tensor
         x = self.Spatial_norm(x)
         
         #Extract cls token
@@ -196,28 +249,55 @@ class Action_Recognition_Transformer(nn.Module):
         #Reshape input
         x = x[:,:p,:]
         x = rearrange(x, '(b f) p Se-> b f (p Se)', f=f)
-    
-        return x, cls_token #cls token and encoded features returned
+        
+        # Return the spatially encoded features and the class token
+        if self.op_type=='cls':
+            return cls_token
+        else:
+            return x, cls_token #cls token and encoded features returned
 
     def temporal_forward_features(self, x, cls_token):
-        b,f,St = x.shape
-        x = torch.cat((x,cls_token), dim=1) #B x mocap_frames +1 x temp_embed | temp_embed = num_joints*Se
+        """
+        Forward pass of the temporal transformer.
         
+        Args:
+            x (torch.Tensor): Input tensor of shape (batch_size, mocap_frames, num_joints*Se).
+            cls_token (torch.Tensor): Class token tensor of shape (batch_size, num_joints*Se).
+        
+        Returns:
+            torch.Tensor: If `self.op_type` is 'cls', returns the class token tensor of shape (batch_size, num_joints*Se).
+                          Otherwise, returns the averaged features tensor of shape (batch_size, St).
+        """
+        
+        # Extract batch size, mocap frames, and sequence length from the input tensor
+        b,f,St = x.shape
+        
+        # Concatenate the input tensor with the class token along the sequence length dimension
+        x = torch.cat((x,cls_token), dim=1) # B x mocap_frames +1 x temp_embed | temp_embed = num_joints*Se
+        
+        # Update batch size
         b  = x.shape[0]
+        
+        # Add positional embeddings to the input tensor
         x += self.Temporal_pos_embed
+        
+        # Apply dropout to the input tensor
         x = self.pos_drop(x)
         
+        # Iterate over all the blocks in the temporal transformer
         for blk in self.Temporal_blocks:
             x = blk(x)
 
+        # Apply normalization to the output tensor
         x = self.Temporal_norm(x)
         
-        ###Extract Class token head from the output
+        # Extract the class token from the output tensor
         if self.op_type=='cls':
             cls_token = x[:,-1,:]
             cls_token = cls_token.view(b, -1) # (Batch_size, temp_embed)
             return cls_token
 
+        # If `self.op_type` is not 'cls', average the features over the mocap frames dimension
         else:
             x = x[:,:f,:]
             x = rearrange(x, 'b f St -> b St f')
@@ -227,35 +307,51 @@ class Action_Recognition_Transformer(nn.Module):
 
 
     def forward(self, inputs):
-        #Input: B x MOCAP_FRAMES X  119 x 3
-        b,_,_,c = inputs.shape
-
-        #Extract skeletal signal from input
-        x = inputs[:,:, :self.num_joints, :self.joint_coords] #B x Fs x num_joints x 3
+        """
+        Forward pass of the fusion model.
         
-        #Extract acc signal from input
-        sxf = inputs[:, 0, self.num_joints:self.num_joints+self.acc_features, 0 ] #B x 1 x acc_features x 1
-        sx = inputs[:, 0 , self.num_joints+self.acc_features:, :self.acc_coords] #B x 1 x Fa x 3
-        sx = torch.reshape(sx, (b,-1,1,self.acc_coords) ) #B x Fa x 1 x 3
+        Args:
+            inputs (torch.Tensor): Input tensor of shape (batch_size, mocap_frames, num_joints, 3).
         
-        #Get skeletal features 
-        x,cls_token = self.spatial_forward_features(x) #in: B x Fs x num_joints x 3 , op: B x Fs x (num_joints*Se)
-
-        #Pass cls token to temporal transformer
-        temp_cls_token = self.proj_up_clstoken(cls_token) #in: B x mocap_frames * Se -> op: B x num_joints*Se
-        temp_cls_token = torch.unsqueeze(temp_cls_token,dim=1) #op: B x 1 x num_joints*Se
+        Returns:
+            torch.Tensor: Log softmax of the output tensor, shape (batch_size, St).
+        """
         
-        x = self.temporal_forward_features(x,temp_cls_token) #in: B x Fs x (num_joints*Se) , op: B x St
-
-        #Get acceleration features 
-        sx = self.acc_forward_features(sx) #in: F x Fa x 3 x 1,  op: B x St
-        sxf = self.acc_features_embed(sxf)
+        # Extract batch size, mocap frames, and number of joints from the input tensor
+        batch_size, mocap_frames, num_joints, _ = inputs.shape
+        
+        # Extract skeletal signal from input
+        skeletal_signal = inputs[:,:, :num_joints, :self.joint_coords] # B x Fs x num_joints x 3
+        
+        # Extract acceleration signal from input
+        acc_features = inputs[:, 0, self.num_joints:self.num_joints+self.acc_features, 0 ] # B x 1 x acc_features x 1
+        acc_signal = inputs[:, 0 , self.num_joints+self.acc_features:, :self.acc_coords] # B x 1 x Fa x 3
+        acc_signal = torch.reshape(acc_signal, (batch_size,-1,1,self.acc_coords) ) # B x Fa x 1 x 3
+        
+        # Get skeletal features using spatial transformer
+        skeletal_features, cls_token = self.spatial_forward_features(skeletal_signal) # B x Fs x (num_joints*Se)
+        
+        # Project up class token to match dimensions with temporal transformer
+        cls_token = self.proj_up_clstoken(cls_token) # B x num_joints*Se
+        cls_token = torch.unsqueeze(cls_token,dim=1) # B x 1 x num_joints*Se
+        
+        # Get temporal features using temporal transformer
+        temporal_features = self.temporal_forward_features(skeletal_features,cls_token) # B x St
+        
+        # Get acceleration features using acceleration transformer
+        acc_features = self.acc_forward_features(acc_signal) # B x St
+        acc_features_embed = self.acc_features_embed(acc_features)
         if self.fuse_acc_features:
-            sx+= sxf #Add the features signal to acceleration signal
-
-        #Concat features along frame dimension
-        x = torch.cat((x,sx),dim=1) #x += sx 
-        x = self.class_head(x)
-
-        return F.log_softmax(x,dim=1)
+            acc_features += acc_features_embed # Add the features signal to acceleration signal
+        
+        # Concatenate skeletal and acceleration features along frame dimension
+        concatenated_features = torch.cat((temporal_features, acc_features),dim=1) # B x (St + St)
+        
+        # Apply class head to the concatenated features
+        output = self.class_head(concatenated_features)
+        
+        # Apply log softmax to the output tensor
+        output = F.log_softmax(output,dim=1)
+        
+        return output
 
