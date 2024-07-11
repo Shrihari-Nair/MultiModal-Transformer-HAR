@@ -80,9 +80,9 @@ class Action_Recognition_Transformer(nn.Module):
 
         #Acceleration patch and pos embeddings
         if embed_type=='lin':
-            self.Acc_coords_to_embedding = nn.Linear(acc_coords, acc_embed) #Linear patch embedding
+            self.acc_coords_for_embedding = nn.Linear(acc_coords, acc_embed) #Linear patch embedding
         else:
-            self.Acc_coords_to_embedding = nn.Conv1d(acc_coords, acc_embed, 1, 1) #Conv patch embedding
+            self.acc_coords_for_embedding = nn.Conv1d(acc_coords, acc_embed, 1, 1) #Conv patch embedding
         
         self.Acc_pos_embed = nn.Parameter(torch.zeros(1, acc_frames+1, acc_embed)) #1 location per frame - embed: 1xloc_embed from 1xloc_cords
         self.acc_token = nn.Parameter(torch.zeros(1,1,acc_embed))
@@ -147,14 +147,14 @@ class Action_Recognition_Transformer(nn.Module):
         # Reshape the input tensor to (B, F, P*C)
         x = rearrange(x, 'b f p c  -> b f (p c)', ) # b x Fa x 3
         
-        if self.embed_type == 'conv':
+        if self.embed_type == 'conv': 
             # If the embed_type is 'conv', reshape the input tensor to (B, F, C, P) for convolutional embedding
             x = rearrange(x, '(b f) p c  -> (b f) c p',b=b) # b x 3 x Fa  - Conv k liye channels first
-            x = self.Acc_coords_to_embedding(x) # B x c x p ->  B x Sa x p
+            x = self.acc_coords_for_embedding(x) # B x c x p ->  B x Sa x p
             x = rearrange(x, '(b f) Sa p  -> (b f) p Sa', b=b)
         else: 
             # Else, perform linear embedding
-            x = self.Acc_coords_to_embedding(x) #all acceleration data points for the action = Fa | op: b x Fa x Sa
+            x = self.acc_coords_for_embedding(x) #all acceleration data points for the action = Fa | op: b x Fa x Sa
 
         # Create a class token for each frame
         class_token=torch.tile(self.acc_token,(b,1,1)) #(B,1,1) - 1 cls token for all frames
