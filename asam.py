@@ -87,22 +87,38 @@ class ASAM:
 
 
 class SAM(ASAM):
-    @torch.no_grad()
+    @torch.no_grad()  # Decorator to disable gradient calculation
     def ascent_step(self):
+        """
+        Performs the ascent step of the SAM algorithm, which is a variant of the ASAM algorithm.
+        """
+        # Initialize list to store gradients
         grads = []
+        # Iterate over named parameters of the model
         for n, p in self.model.named_parameters():
+            # Skip parameters with no gradients
             if p.grad is None:
                 continue
+            # Append the norm of the gradient to the list of gradients
             grads.append(torch.norm(p.grad, p=2))
+        # Calculate the norm of the stacked gradients
         grad_norm = torch.norm(torch.stack(grads), p=2) + 1.e-16
+        # Iterate over named parameters of the model
         for n, p in self.model.named_parameters():
+            # Skip parameters with no gradients
             if p.grad is None:
                 continue
+            # Get the current "eps" value for the parameter from the state
             eps = self.state[p].get("eps")
+            # If "eps" is not yet stored, create a new tensor and store it
             if eps is None:
-                eps = torch.clone(p).detach()
-                self.state[p]["eps"] = eps
+                eps = torch.clone(p).detach()  # Create a new tensor as a clone of the parameter
+                self.state[p]["eps"] = eps  # Store the tensor in the state
+            # Update the tensor to be the same as the gradient
             eps[...] = p.grad[...]
+            # Multiply the tensor by the step size divided by the gradient norm
             eps.mul_(self.rho / grad_norm)
+            # Add the new tensor to the parameter to update its value
             p.add_(eps)
+        # Zero the gradients of all parameters in the optimizer
         self.optimizer.zero_grad()
